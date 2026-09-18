@@ -91,11 +91,19 @@ def build_all():
         bq_goal, bq_goal_monthly = None, None
     # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
-    # daily の集計処理（bq_goal を引数に追加）
+   # SHIRURU・ノベルティ の抽出（daily で使うため先に取得）
+    try:
+        bq_srr = shiruru.build(gc)
+    except Exception as e:
+        logger.error("SHIRURU の抽出に失敗", exc_info=True)
+        errors["shiruru"] = e
+        bq_srr = None
+
+    # daily の集計処理（bq_srr を引数に追加）
     if df_order is not None and bq_meetup is not None:
         try:
             df_daily = aggregate.build(
-                df_order, bq_meetup, bq_mcs=bq_mcs, bq_goal=bq_goal
+                df_order, bq_meetup, bq_mcs=bq_mcs, bq_goal=bq_goal, bq_srr=bq_srr
             )
         except Exception as e:
             logger.error("日次データ集計 (daily) の処理に失敗", exc_info=True)
@@ -106,14 +114,6 @@ def build_all():
             "日次データ集計 (daily): 依存データ（order/meetup）の取得失敗のためスキップ"
         )
         df_daily = None
-
-
-    try:
-        bq_srr = shiruru.build(gc)
-    except Exception as e:
-        logger.error("SHIRURU の抽出に失敗", exc_info=True)
-        errors["shiruru"] = e
-        bq_srr = None
 
     # monthly は meetup と order に依存（目標値・MCS・SHIRURUは取得できていれば結合、失敗していれば省略）
     if df_order is not None and bq_meetup is not None:

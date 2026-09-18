@@ -105,15 +105,84 @@ def _aggregate_mcs_monthly(bq_mcs):
 
 
 def _aggregate_shiruru_monthly(bq_srr):
-    """SHIRURU データを月・店舗ごとに集計する（shiruru_distribution: 配布件数）。"""
-    df_monthly_srr = bq_srr.copy()
-    df_monthly_srr["month"] = (
-        df_monthly_srr["date"].dt.to_period("M").dt.to_timestamp()
+    """SHIRURU & ノベルティ データを月・店舗ごとに集計する。"""
+    if bq_srr is None or bq_srr.empty:
+        return pd.DataFrame(
+            columns=["month", "store_code", "shiruru_distribution", "novelty_distribution", "total_distribution"]
+        )
+
+    df = bq_srr.copy()
+    df["month"] = df["date"].dt.to_period("M").dt.to_timestamp()
+
+    # 店舗・月・種別ごとに集計
+    if "dist_type" in df.columns:
+        df_pivot = (
+            df.groupby(["month", "store_code", "dist_type"])
+            .size()
+            .unstack(fill_value=0)
+            .reset_index()
+        )
+        if "shiruru" not in df_pivot.columns:
+            df_pivot["shiruru"] = 0
+        if "novelty" not in df_pivot.columns:
+            df_pivot["novelty"] = 0
+
+        df_pivot.rename(
+            columns={
+                "shiruru": "shiruru_distribution",
+                "novelty": "novelty_distribution",
+            },
+            inplace=True,
+        )
+    else:
+        df_pivot = df.groupby(["month", "store_code"]).size().reset_index(name="shiruru_distribution")
+        df_pivot["novelty_distribution"] = 0
+
+    # 合計列を必ず計算して作成
+    df_pivot["total_distribution"] = (
+        df_pivot["shiruru_distribution"] + df_pivot["novelty_distribution"]
     )
 
-    df_monthly_srr = df_monthly_srr.groupby(["month", "store_code"]).size()
-    return df_monthly_srr.reset_index(name="shiruru_distribution")
+    return df_pivot[["month", "store_code", "shiruru_distribution", "novelty_distribution", "total_distribution"]]
 
+def _aggregate_shiruru_daily(bq_srr):
+    """SHIRURU & ノベルティ データを日・店舗ごとに集計する。"""
+    if bq_srr is None or bq_srr.empty:
+        return pd.DataFrame(
+            columns=["date", "store_code", "shiruru_distribution", "novelty_distribution", "total_distribution"]
+        )
+
+    df = bq_srr.copy()
+    # 日付単位（年月日）に丸めて datetime 型として統一
+    df["date"] = pd.to_datetime(df["date"]).dt.normalize()
+
+    if "dist_type" in df.columns:
+        df_pivot = (
+            df.groupby(["date", "store_code", "dist_type"])
+            .size()
+            .unstack(fill_value=0)
+            .reset_index()
+        )
+        if "shiruru" not in df_pivot.columns:
+            df_pivot["shiruru"] = 0
+        if "novelty" not in df_pivot.columns:
+            df_pivot["novelty"] = 0
+
+        df_pivot.rename(
+            columns={
+                "shiruru": "shiruru_distribution",
+                "novelty": "novelty_distribution",
+            },
+            inplace=True,
+        )
+    else:
+        df_pivot = df.groupby(["date", "store_code"]).size().reset_index(name="shiruru_distribution")
+        df_pivot["novelty_distribution"] = 0
+
+    df_pivot["total_distribution"] = (
+        df_pivot["shiruru_distribution"] + df_pivot["novelty_distribution"]
+    )
+    return df_pivot[["date", "store_code", "shiruru_distribution", "novelty_distribution", "total_distribution"]]
 
 def build_monthly(
     df_order, df_meetup_bq, bq_goal_monthly=None, bq_mcs=None, bq_srr=None
@@ -164,7 +233,7 @@ def build_monthly(
     if bq_mcs is not None:
         columns += ["viewing"]
     if bq_srr is not None:
-        columns += ["shiruru_distribution"]
+        columns += ["shiruru_distribution", "novelty_distribution", "total_distribution"]
     df_monthly = df_monthly[columns]
 
     # 店舗番号が有効でないレコードを消す
@@ -184,15 +253,16 @@ def build_monthly(
     if bq_mcs is not None:
         int_columns += ["viewing"]
     if bq_srr is not None:
-        int_columns += ["shiruru_distribution"]
+        int_columns += ["shiruru_distribution", "novelty_distribution", "total_distribution"]
     df_monthly[int_columns] = df_monthly[int_columns].astype(int)
 
     return df_monthly
 
 
-def build(df_order, df_meetup_bq, bq_mcs=None, bq_goal=None):
+def build(df_order, df_meetup_bq, bq_mcs=None, bq_goal=None, bq_srr=None):
     """来店データ(df_order)と Meetup データ(df_meetup_bq)、
-    MCS データ(bq_mcs、任意)・目標値データ(bq_goal、任意)から df_daily を構築する。
+    MCS データ(bq_mcs、任意)・目標値データ(bq_goal、任意)・
+    SHIRURU データ(bq_srr、任意)から df_daily を構築する。
     """
     df_daily_visits = _aggregate_visits(df_order)
     df_daily_meetup = _aggregate_meetup(df_meetup_bq)
@@ -209,21 +279,33 @@ def build(df_order, df_meetup_bq, bq_mcs=None, bq_goal=None):
             df_daily, df_daily_mcs, on=["date", "store_code"], how="outer"
         )
 
+ # SHIRURU・ノベルティ データが存在する場合はマージ
+    if bq_srr is not None:
+        df_daily_srr = _aggregate_shiruru_daily(bq_srr)
+        # 日付型を揃える
+        df_daily["date"] = pd.to_datetime(df_daily["date"])
+        df_daily_srr["date"] = pd.to_datetime(df_daily_srr["date"])
+        df_daily = pd.merge(
+            df_daily, df_daily_srr, on=["date", "store_code"], how="outer"
+        )
+
     # 目標値カラムの定義
     goal_columns = ["total_goal", "DU_goal", "Meetup_goal", "SHIRURU_goal", "MCS_goal"]
 
-    # ▼▼▼【修正】日次の各目標値をすべてマージ ▼▼▼
     if bq_goal is not None:
         df_goal_daily = bq_goal.rename(columns={"target_day": "date"})[
             ["date", "store_code"] + goal_columns
-        ]
+        ].copy()
+        # 日付型を揃える
+        df_daily["date"] = pd.to_datetime(df_daily["date"])
+        df_goal_daily["date"] = pd.to_datetime(df_goal_daily["date"])
         df_daily = pd.merge(
             df_daily, df_goal_daily, on=["date", "store_code"], how="outer"
         )
-    # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
-    # 欠損値を0で埋める
-    df_daily.fillna(0, inplace=True)
+    # 日付以外の欠損値を0で埋める
+    value_columns = [col for col in df_daily.columns if col not in ["date", "store"]]
+    df_daily[value_columns] = df_daily[value_columns].fillna(0)
 
     # 店舗番号から店舗名を付与
     df_daily["store"] = df_daily["store_code"].map(inverse_store_dict)
@@ -241,14 +323,16 @@ def build(df_order, df_meetup_bq, bq_mcs=None, bq_goal=None):
     ]
     if bq_mcs is not None:
         columns += ["viewing"]
+    if bq_srr is not None:
+        columns += ["shiruru_distribution", "novelty_distribution", "total_distribution"]
     if bq_goal is not None:
-        columns += goal_columns  # 【修正】全目標カラムを追加
+        columns += goal_columns
     df_daily = df_daily[columns]
 
     # 店舗番号が有効でないレコードを消す
     df_daily = df_daily[(df_daily["store_code"] > 0) & (df_daily["store_code"] < 500)]
 
-    # みなと銀行店舗を消す（月次と同様に除外）
+    # みなと銀行店舗を消す
     df_daily = df_daily[~df_daily["store_code"].isin([117, 120])]
 
     # 整数型に
@@ -261,10 +345,12 @@ def build(df_order, df_meetup_bq, bq_mcs=None, bq_goal=None):
     ]
     if bq_mcs is not None:
         int_columns += ["viewing"]
+    if bq_srr is not None:
+        int_columns += ["shiruru_distribution", "novelty_distribution", "total_distribution"]
     df_daily[int_columns] = df_daily[int_columns].astype(int)
 
-    # 目標値は小数（日割り値）の可能性があるため float 型に設定
+    # 目標値は float 型に設定
     if bq_goal is not None:
-        df_daily[goal_columns] = df_daily[goal_columns].astype(float)  # 【修正】全目標カラムを変換
+        df_daily[goal_columns] = df_daily[goal_columns].astype(float)
 
     return df_daily

@@ -45,7 +45,7 @@ MEETUP_SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1B33R0VydVlKLH7
 ORDER_SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1584pXhsuZfu-hmx9N1p9_JQ3V33uy-VFGdHkbfWxCxU/edit?gid=2012077172#gid=2012077172"
 EVENT_SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1bNd_oqfDEIvVysQSVGMdgWOxY39hSRZLgUBkVsRjysQ/edit?gid=0#gid=0"
 MCS_SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/11jDJSgYZlVJgMQ5HQy94SuKdWQcv4R5PuMjI0B-dSI4/edit?gid=0#gid=0"
-SHIRURU_SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1IfieJcqJPft1dFfsGGO3n2buPxL_TE07O-ZZyy4hqLI/edit?gid=0#gid=0"
+SHIRURU_SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1uscw4rOfgHhovxpxOYw1ADvqkhqPn1FwzxovrV8vLqQ/edit?gid=86113433#gid=86113433"
 GOAL_SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1P0cnzgYwEe1wYYeTuhi0qiv7c81q8cCy4T4JfnJ3f-Q/edit?gid=769489446#gid=769489446"
 
 # ---------------------------------------------------------------------------

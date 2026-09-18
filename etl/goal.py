@@ -47,6 +47,9 @@ def _build_daily_goal(ss_goal):
 
     # 外部結合・重複削除
     df_daily_goal = pd.concat([df_ss_goal, df_ss_goal2], join="outer", ignore_index=True)
+    print("【DEBUG】worksheet(1)のタイトル:", ss_goal.get_worksheet(1).title)
+    print("【DEBUG】worksheet(2)のタイトル:", ss_goal.get_worksheet(2).title)
+    print("【DEBUG】結合後の列名一覧:", df_daily_goal.columns.tolist())
     df_daily_goal.drop_duplicates(inplace=True)
 
    # 店舗名をもとに店舗番号をマッピング（前後の空白を除去してマッチング）
