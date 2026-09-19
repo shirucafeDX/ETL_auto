@@ -52,6 +52,12 @@ def _build_daily_goal(ss_goal):
     print("【DEBUG】結合後の列名一覧:", df_daily_goal.columns.tolist())
     df_daily_goal.drop_duplicates(inplace=True)
 
+    # 店舗名・店舗番号が共に空の行（スプレッドシート側の数式が実データ範囲を
+    # 超えてコピーされていることによる余分な空行）を除外
+    df_daily_goal = df_daily_goal[
+        ~(df_daily_goal["店舗名"].isnull() & df_daily_goal["店舗番号"].isnull())
+    ]
+
    # 店舗名をもとに店舗番号をマッピング（前後の空白を除去してマッチング）
     if "店舗番号" in df_daily_goal.columns and df_daily_goal["店舗番号"].notnull().any():
         df_daily_goal["店舗番号"] = df_daily_goal["店舗番号"].fillna(
@@ -64,8 +70,8 @@ def _build_daily_goal(ss_goal):
             cleaned_store_name.apply(lambda x: store_dict.get(x + "店") if not x.endswith("店") else store_dict.get(x[:-1]))
         )
 
-    if df_daily_goal["店舗名"].count() != df_daily_goal["店舗番号"].count():
-        unmapped = df_daily_goal[df_daily_goal["店舗番号"].isnull()]["店舗名"].unique()
+    unmapped = df_daily_goal[df_daily_goal["店舗番号"].isnull()]["店舗名"].unique()
+    if len(unmapped) > 0:
         logger.warning("goal: 店舗マッピングに漏れあり: %s", unmapped)
 
     # 不要カラムを削除
